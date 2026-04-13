@@ -63,6 +63,9 @@ if (!$site) fail('site_not_found', "no site matched '$needle'");
 $siteId   = $site['_id'];
 $siteName = $site['name'] ?? $siteId;
 $sitePath = expand_home((string)($site['path'] ?? ''));
+// Normalize to forward slashes: PHP/bash/WP-CLI all accept them on Windows,
+// and it keeps CLAUDE.md paths from mixing separators.
+$sitePath = str_replace('\\', '/', $sitePath);
 $wpRoot   = "$sitePath/app/public";
 if (!is_dir($wpRoot)) fail('wp_root_missing', "site WP root not found: $wpRoot");
 
@@ -92,7 +95,10 @@ $phpVer    = $site['services']['php']['version'] ?? null;
 $mysqlVer  = $site['services']['mysql']['version'] ?? null;
 $dbFlavor  = $site['services']['mysql']['name'] ?? 'mysql';  // 'mysql' or 'mariadb'
 $adminId   = (string)($site['oneClickAdminID'] ?? '1');
-$adminName = (string)($site['oneClickAdminDisplayName'] ?? '');
+$adminName = (string)($site['oneClickAdminDisplayName']
+    ?? $site['oneClickAdminUsername']
+    ?? $site['oneClickAdminEmail']
+    ?? '');
 
 // --- Router mode & URL ---
 $router = @json_decode((string)@file_get_contents("$configDir/router.json"), true) ?: [];
@@ -130,6 +136,19 @@ $installDir = find_install_dir();
 $posixWrapper = write_posix_wrapper($siteId, $sitePath, $configDir, $installDir, $phpDir, $mysqlDir);
 $cmdWrapper   = write_cmd_wrapper($siteId, $sitePath, $configDir, $installDir, $phpDir, $mysqlDir);
 
+// --- Full path to Local's mysql binary for CLAUDE.md (cross-platform copy-paste) ---
+$archCandidates = match (PHP_OS_FAMILY) {
+    'Windows' => ['win64', 'win32'],
+    'Darwin'  => (php_uname('m') === 'arm64') ? ['darwin-arm64', 'darwin'] : ['darwin', 'darwin-arm64'],
+    default   => ['linux'],
+};
+$arch = $archCandidates[0];
+foreach ($archCandidates as $a) {
+    if (is_dir("$lightning/$mysqlDir/bin/$a")) { $arch = $a; break; }
+}
+$mysqlBinName = PHP_OS_FAMILY === 'Windows' ? 'mysql.exe' : 'mysql';
+$mysqlBin = "$lightning/$mysqlDir/bin/$arch/bin/$mysqlBinName";
+
 // --- Update CLAUDE.md block ---
 $claudeStatus = update_claude_md([
     'name'       => $siteName,
@@ -144,6 +163,8 @@ $claudeStatus = update_claude_md([
     'socket'     => $socket,
     'php_ver'    => $phpVer,
     'mysql_ver'  => $mysqlVer,
+    'mysql_bin'  => $mysqlBin,
+    'is_windows' => PHP_OS_FAMILY === 'Windows',
 ]);
 
 // --- Symlink ---
@@ -288,7 +309,11 @@ esac
 export MYSQL_HOME="$LOCAL_CONFIG/run/$SITE_ID/conf/mysql"
 export PHPRC="$LOCAL_CONFIG/run/$SITE_ID/conf/php"
 export WP_CLI_DISABLE_AUTO_CHECK_UPDATE=1
-export PATH="$LIGHTNING/$MYSQL_DIR/bin/$ARCH_DIR/bin:$LIGHTNING/$PHP_DIR/bin/$ARCH_DIR/bin:$PATH"
+# PHP layout differs on Windows: bin/<arch>/php.exe (no nested bin/). MySQL keeps bin/<arch>/bin/.
+case "$ARCH_DIR" in
+  win*) export PATH="$LIGHTNING/$MYSQL_DIR/bin/$ARCH_DIR/bin:$LIGHTNING/$PHP_DIR/bin/$ARCH_DIR:$PATH" ;;
+  *)    export PATH="$LIGHTNING/$MYSQL_DIR/bin/$ARCH_DIR/bin:$LIGHTNING/$PHP_DIR/bin/$ARCH_DIR/bin:$PATH" ;;
+esac
 
 if [ -n "$LOCAL_INSTALL" ] && [ -f "$LOCAL_INSTALL/wp-cli/config.yaml" ]; then
   export WP_CLI_CONFIG_PATH="$LOCAL_INSTALL/wp-cli/config.yaml"
@@ -355,7 +380,8 @@ IF EXIST "%LOCAL_INSTALL%\wp-cli\win64" (SET "WPCLI_ARCH=win64") ELSE (SET "WPCL
 SET "MYSQL_HOME=%LOCAL_CONFIG%\run\%SITE_ID%\conf\mysql"
 SET "PHPRC=%LOCAL_CONFIG%\run\%SITE_ID%\conf\php"
 SET "WP_CLI_DISABLE_AUTO_CHECK_UPDATE=1"
-SET "PATH=%LIGHTNING%\%MYSQL_DIR%\bin\%ARCH_DIR%\bin;%LIGHTNING%\%PHP_DIR%\bin\%ARCH_DIR%\bin;%PATH%"
+REM NOTE: PHP on Windows is at bin\<arch>\php.exe (no nested bin\). MySQL keeps the bin\<arch>\bin\ layout.
+SET "PATH=%LIGHTNING%\%MYSQL_DIR%\bin\%ARCH_DIR%\bin;%LIGHTNING%\%PHP_DIR%\bin\%ARCH_DIR%;%PATH%"
 IF NOT "%LOCAL_INSTALL%"=="" IF EXIST "%LOCAL_INSTALL%\wp-cli\config.yaml" (
   SET "WP_CLI_CONFIG_PATH=%LOCAL_INSTALL%\wp-cli\config.yaml"
   SET "PATH=%LOCAL_INSTALL%\wp-cli\%WPCLI_ARCH%;%LOCAL_INSTALL%\composer\%WPCLI_ARCH%;%PATH%"
@@ -381,10 +407,57 @@ EOT;
 
 function update_claude_md(array $f): array {
     $path = 'CLAUDE.md';
-    $socketLine = $f['socket']
-        ? "  - **Unix socket:** `{$f['socket']}`  _(Linux/macOS only — preferred for direct `mysql` client access)_"
-        : "  - **Unix socket:** _(none — Windows)_";
+    $isWin = !empty($f['is_windows']);
     $tcp = $f['mysql_port'] ? "127.0.0.1:{$f['mysql_port']}" : "n/a";
+    $u = $f['db']['user']; $p = $f['db']['pass']; $n = $f['db']['name'];
+
+    // Socket line: only show on POSIX where the socket exists and is usable.
+    // MySQL on Windows uses named pipes / TCP — the socket file (if any) isn't usable from outside mysqld.
+    $socketLine = (!$isWin && $f['socket'])
+        ? "  - **Unix socket:** `{$f['socket']}`  _(preferred for direct `mysql` client access — faster, no password warning)_"
+        : null;
+
+    // Direct-DB section varies by platform. Use the full path to Local's bundled mysql binary so the command
+    // works regardless of system PATH (the wp.cmd wrapper uses SETLOCAL, so PATH changes don't persist back
+    // to the caller's shell — and POSIX `./bin/wp` runs in a subshell, so neither does there).
+    $mysqlBin = $f['mysql_bin'];
+    if ($isWin) {
+        $dbSection = <<<MD
+### Direct DB access
+
+```cmd
+"$mysqlBin" -h 127.0.0.1 -P {$f['mysql_port']} -u$u -p$p $n
+```
+
+The bundled `mysql.exe` is always invoked by full path — `wp.cmd` uses `SETLOCAL`, so it does not export PATH to the caller's shell.
+MD;
+    } else {
+        $dbSection = <<<MD
+### Direct DB access
+
+```bash
+# Via socket (preferred — faster, avoids password-on-CLI warning):
+"$mysqlBin" --socket="{$f['socket']}" -u$u -p$p $n
+
+# Via TCP (works everywhere):
+"$mysqlBin" -h 127.0.0.1 -P {$f['mysql_port']} -u$u -p$p $n
+```
+MD;
+        // If no socket was discovered (site never started, etc.), drop the socket example.
+        if (!$f['socket']) {
+            $dbSection = <<<MD
+### Direct DB access
+
+```bash
+"$mysqlBin" -h 127.0.0.1 -P {$f['mysql_port']} -u$u -p$p $n
+```
+MD;
+        }
+    }
+
+    $dbListItems = "  - **TCP:** `$tcp`"
+        . ($socketLine ? "\n$socketLine" : "");
+
     $block = <<<MD
 <!-- localwp-connect:start -->
 ## LocalWP Site: {$f['name']}
@@ -396,9 +469,8 @@ This project is connected to the LocalWP site **{$f['name']}**.
 - **Local URL:** `{$f['url']}`  _(router mode: `{$f['mode']}`)_
 - **Admin URL:** `{$f['url']}/wp-admin`
 - **Admin user:** `{$f['admin_user']}` (ID `{$f['admin_id']}`)
-- **Database:** `{$f['db']['name']}` — user `{$f['db']['user']}` / password `{$f['db']['pass']}` — table prefix `{$f['db']['prefix']}`
-  - **TCP:** `$tcp`
-$socketLine
+- **Database:** `$n` — user `$u` / password `$p` — table prefix `{$f['db']['prefix']}`
+$dbListItems
 - **Stack:** PHP `{$f['php_ver']}` · MySQL `{$f['mysql_ver']}`
 
 ### Running WP-CLI
@@ -414,15 +486,7 @@ This project ships a wrapper that loads LocalWP's environment — no need to ope
 ./bin/wp db query "SELECT COUNT(*) FROM {$f['db']['prefix']}posts"
 ```
 
-### Direct DB access
-
-Local's `mysql` client is on the wrapper's PATH. After `./bin/wp` runs once in a shell, you can:
-
-```bash
-mysql --socket="{$f['socket']}" -u{$f['db']['user']} -p{$f['db']['pass']} {$f['db']['name']}
-# or TCP (works everywhere):
-mysql -h 127.0.0.1 -P {$f['mysql_port']} -u{$f['db']['user']} -p{$f['db']['pass']} {$f['db']['name']}
-```
+$dbSection
 <!-- localwp-connect:end -->
 MD;
 

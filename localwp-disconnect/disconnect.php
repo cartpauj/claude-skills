@@ -55,21 +55,46 @@ if ($sitePath) {
     $slug = basename((string)getcwd());
     $target = rtrim($sitePath, '/\\') . '/app/public/wp-content/plugins/' . $slug;
     $report['symlink']['target'] = $target;
+    $isWin = PHP_OS_FAMILY === 'Windows';
+    $pwdReal = realpath((string)getcwd()) ?: (string)getcwd();
 
     if (!file_exists($target) && !is_link($target)) {
         $report['symlink']['action'] = 'already_absent';
+    } elseif ($isWin) {
+        // On Windows, PHP's is_link() is unreliable for junctions (mklink /J) AND directory symlinks
+        // (mklink /D) — both are NTFS reparse points, which PHP doesn't always recognize.
+        // Use fsutil to detect + read the real target.
+        $jt = win_reparse_target($target);
+        if ($jt !== null) {
+            $jtReal = realpath($jt) ?: $jt;
+            if (win_path_eq($jtReal, $pwdReal)) {
+                @rmdir($target);
+                $report['symlink']['action'] = !file_exists($target) ? 'removed' : 'error_still_present';
+            } elseif ($force === 'symlink-elsewhere') {
+                @rmdir($target);
+                $report['symlink']['action'] = 'removed_foreign';
+                $report['symlink']['was_pointing_to'] = $jtReal;
+            } else {
+                $report['symlink']['action'] = 'blocked_symlink_elsewhere';
+                $report['symlink']['was_pointing_to'] = $jtReal;
+                $report['warnings'][] = "Junction/symlink at $target points to $jtReal, not this project — left in place";
+            }
+        } elseif (is_dir($target)) {
+            $report['symlink']['action'] = 'blocked_real_directory';
+            $report['warnings'][] = "Real directory at $target — left in place (not a junction or symlink)";
+        } else {
+            $report['symlink']['action'] = 'blocked_unexpected_file';
+            $report['warnings'][] = "Unexpected file at $target — left in place";
+        }
     } elseif (is_link($target)) {
         $cur = readlink($target) ?: '';
         $curReal = realpath($cur) ?: $cur;
-        $pwdReal = realpath((string)getcwd()) ?: (string)getcwd();
         if ($curReal === $pwdReal) {
-            if (PHP_OS_FAMILY === 'Windows') { @rmdir($target) || @unlink($target); }
-            else { @unlink($target); }
+            @unlink($target);
             $report['symlink']['action'] = (!file_exists($target) && !is_link($target))
                 ? 'removed' : 'error_still_present';
         } elseif ($force === 'symlink-elsewhere') {
-            if (PHP_OS_FAMILY === 'Windows') { @rmdir($target) || @unlink($target); }
-            else { @unlink($target); }
+            @unlink($target);
             $report['symlink']['action'] = 'removed_foreign';
             $report['symlink']['was_pointing_to'] = $curReal;
         } else {
@@ -78,13 +103,8 @@ if ($sitePath) {
             $report['warnings'][] = "Symlink at $target points to $curReal, not this project — left in place";
         }
     } elseif (is_dir($target)) {
-        // Windows junction detection: try rmdir (works on junctions, fails on real dirs with content)
-        if (PHP_OS_FAMILY === 'Windows' && @rmdir($target)) {
-            $report['symlink']['action'] = 'removed_junction';
-        } else {
-            $report['symlink']['action'] = 'blocked_real_directory';
-            $report['warnings'][] = "Real directory at $target — left in place (not a symlink)";
-        }
+        $report['symlink']['action'] = 'blocked_real_directory';
+        $report['warnings'][] = "Real directory at $target — left in place (not a symlink)";
     } else {
         $report['symlink']['action'] = 'blocked_unexpected_file';
         $report['warnings'][] = "Unexpected file at $target — left in place";
@@ -151,3 +171,32 @@ $report['site_name'] = $siteName;
 $report['site_path'] = $sitePath;
 
 emit($report);
+
+// ---------- Windows reparse-point helpers ----------
+
+/**
+ * If $path is an NTFS reparse point (junction or directory symlink), return its target.
+ * Returns null if $path is not a reparse point (real dir, file, or missing) or we're not on Windows.
+ *
+ * Uses `fsutil reparsepoint query` which ships with every supported Windows version and does not
+ * require elevation. Parses the "Print Name:" line.
+ */
+function win_reparse_target(string $path): ?string {
+    if (PHP_OS_FAMILY !== 'Windows') return null;
+    $out = [];
+    $rc = 0;
+    @exec('fsutil reparsepoint query ' . escapeshellarg($path) . ' 2>NUL', $out, $rc);
+    if ($rc !== 0) return null;
+    foreach ($out as $line) {
+        if (preg_match('/^\s*Print Name\s*:\s*(.+?)\s*$/i', $line, $m)) {
+            return $m[1];
+        }
+    }
+    return null;
+}
+
+/** Case-insensitive, separator-insensitive path equality for Windows. */
+function win_path_eq(string $a, string $b): bool {
+    $n = fn($p) => strtolower(str_replace('/', '\\', rtrim($p, "/\\ \t\n\r\0\x0B")));
+    return $n($a) === $n($b);
+}

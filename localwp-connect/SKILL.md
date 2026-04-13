@@ -45,8 +45,11 @@ case "$(uname -s)" in
   MINGW*|MSYS*|CYGWIN*)
     if [ -d "$PHP_DIR/bin/win64" ]; then ARCH=win64; else ARCH=win32; fi ;;
 esac
-PHP_BIN="$PHP_DIR/bin/$ARCH/bin/php"
-case "$ARCH" in win*) PHP_BIN="$PHP_BIN.exe" ;; esac
+# PHP layout differs on Windows: bin/<arch>/php.exe (no nested bin/).
+case "$ARCH" in
+  win*) PHP_BIN="$PHP_DIR/bin/$ARCH/php.exe" ;;
+  *)    PHP_BIN="$PHP_DIR/bin/$ARCH/bin/php" ;;
+esac
 ```
 
 On Linux/macOS, Local's PHP needs its shared libs on the loader path:
