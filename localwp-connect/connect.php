@@ -320,6 +320,10 @@ case "$UNAME" in
 esac
 
 export MYSQL_HOME="$LOCAL_CONFIG/run/$SITE_ID/conf/mysql"
+# LocalWP's my.cnf only has a [mysqld] section, which the mysql CLIENT can't
+# read. Without this, `wp db query` (which shells out to mysql) falls back
+# to /tmp/mysql.sock and fails. MYSQL_UNIX_PORT despite its name = socket path.
+export MYSQL_UNIX_PORT="$LOCAL_CONFIG/run/$SITE_ID/mysql/mysqld.sock"
 export PHPRC="$LOCAL_CONFIG/run/$SITE_ID/conf/php"
 export WP_CLI_DISABLE_AUTO_CHECK_UPDATE=1
 # PHP layout differs on Windows: bin/<arch>/php.exe (no nested bin/). MySQL keeps bin/<arch>/bin/.
