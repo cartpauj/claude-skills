@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Baptism Program – {{CHILD_NAME}}</title>
+<style>
+  /* ── Google Fonts ─────────────────────────────────────────── */
+  @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&family=Allura&family=Sacramento&family=EB+Garamond:ital,wght@0,400;1,400&display=swap');
+
+  /* ── Reset ────────────────────────────────────────────────── */
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  /* ── Screen preview ───────────────────────────────────────── */
+  body {
+    background: #e8e8e8;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 32px;
+    padding: 40px 20px;
+    font-family: 'EB Garamond', Georgia, serif;
+  }
+
+  /* ── Each printed sheet: landscape 11×8.5in ──────────────── */
+  .sheet {
+    width: 11in;
+    height: 8.5in;
+    background: white;
+    display: flex;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 4px 24px rgba(0,0,0,.18);
+  }
+
+  /* ── Cut guide ────────────────────────────────────────────── */
+  .sheet::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 0; bottom: 0;
+    border-left: 1px dashed #bbb;
+    pointer-events: none;
+  }
+
+  /* ── Each half-panel: 5.5×8.5in ──────────────────────────── */
+  .panel { width: 5.5in; height: 8.5in; flex-shrink: 0; position: relative; overflow: hidden; }
+  /* Extra outer-edge padding so text never runs off the cut edges */
+  .panel-left  .front-content { padding-left:  .55in; }
+  .panel-left  .back-content  { padding-left:  .55in; }
+  .panel-right .front-content { padding-right: .55in; }
+  .panel-right .back-content  { padding-right: .55in; }
+
+  /* ── Greenery images ──────────────────────────────────────── */
+  .panel .greenery {
+    position: absolute;
+    left: 0; width: 100%;
+    pointer-events: none;
+  }
+  .greenery-top    { top: 0; }
+  .greenery-bottom { bottom: 0; }
+
+  /* ── FRONT PANEL (Order of Service) ──────────────────────── */
+  .front-content {
+    position: relative;
+    padding: 1.2in .45in .5in;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    height: 100%;
+  }
+
+  .title-baptism {
+    font-family: 'Cormorant Garamond', serif;
+    font-weight: 600;
+    font-size: 40pt;
+    letter-spacing: .12em;
+    line-height: 1;
+    color: #1e1c18;
+  }
+  .title-of {
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic;
+    font-size: 18pt;
+    color: #5a5850;
+    margin: 2pt 0 -4pt;
+  }
+  .title-name {
+    font-family: 'Allura', cursive;
+    font-size: 52pt;
+    line-height: 1.05;
+    color: #1e1c18;
+    text-align: center;
+  }
+
+  .date-row {
+    display: flex;
+    align-items: center;
+    gap: 12pt;
+    margin: 7pt 0 10pt;
+  }
+  .date-row .rule { flex: 1; height: 1px; background: #b5b09e; max-width: 44pt; }
+  .date-text {
+    font-family: 'EB Garamond', serif;
+    font-size: 9pt;
+    letter-spacing: .32em;
+    text-transform: uppercase;
+    color: #6b7550;
+  }
+
+  /* Order list */
+  .order-list {
+    width: 100%;
+    font-size: 12pt;
+    color: #2e2b24;
+    margin-bottom: 4pt;
+  }
+  .order-row {
+    display: flex;
+    align-items: baseline;
+    margin: 2.5pt 0;
+  }
+  .order-role  { white-space: nowrap; }
+  .order-dots  { flex: 1; border-bottom: 1px dotted #c0baa8; margin: 0 6pt; transform: translateY(-3pt); }
+  .order-name  { white-space: nowrap; color: #3a3730; }
+
+  /* Section headers */
+  .section-header {
+    font-family: 'Sacramento', cursive;
+    font-size: 26pt;
+    color: #1e1c18;
+    display: flex;
+    align-items: center;
+    gap: 12pt;
+    width: 100%;
+    justify-content: center;
+    margin: 6pt 0 2pt;
+    white-space: nowrap;
+  }
+  .section-header .hr { height: 1px; width: 44pt; background: #c5bfad; flex-shrink: 0; }
+
+  .performed-by {
+    font-style: italic;
+    font-size: 12pt;
+    color: #3b3930;
+    text-align: center;
+  }
+  .witnesses {
+    font-size: 11.5pt;
+    color: #3b3930;
+    text-align: center;
+    margin-top: 1pt;
+  }
+
+  .talk-row {
+    font-size: 12pt;
+    color: #2e2b24;
+    text-align: center;
+    border-top: 1px dotted #c0baa8;
+    border-bottom: 1px dotted #c0baa8;
+    padding: 4pt 0;
+    width: 100%;
+    margin: 5pt 0;
+  }
+
+  .byline {
+    font-family: 'EB Garamond', serif;
+    font-size: 9.5pt;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: #56544c;
+    margin: 1pt 0 5pt;
+  }
+
+  /* ── BACK PANEL (Song Lyrics) ─────────────────────────────── */
+  .back-content {
+    position: relative;
+    padding: .5in .35in 1.55in;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  .lyrics-title {
+    font-family: 'Sacramento', cursive;
+    font-size: 38pt;
+    text-align: center;
+    color: #1e1c18;
+    line-height: .95;
+    margin-bottom: 8pt;
+  }
+
+  .song-heading {
+    font-family: 'EB Garamond', serif;
+    font-size: 9pt;
+    letter-spacing: .28em;
+    text-transform: uppercase;
+    color: #6b7550;
+    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10pt;
+    margin: 9pt 0 7pt;
+  }
+  .song-heading .hr { height: 1px; width: 34pt; background: #c5bfad; flex-shrink: 0; }
+
+  .verse {
+    font-size: 11pt;
+    line-height: 1.38;
+    text-align: center;
+    color: #2e2b24;
+    margin-bottom: 7pt;
+  }
+  .chorus {
+    font-style: italic;
+    color: #4e4c44;
+  }
+  .chorus-label {
+    font-family: 'EB Garamond', serif;
+    font-size: 7.5pt;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    color: #8a8470;
+    display: block;
+    font-style: normal;
+    margin-bottom: 1pt;
+  }
+
+  /* ── Print rules ──────────────────────────────────────────── */
+  @media print {
+    @page { size: 11in 8.5in; margin: 0; }
+    body  { background: none; padding: 0; gap: 0; display: block; }
+    .sheet { box-shadow: none; page-break-after: always; }
+    .sheet:last-child { page-break-after: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════
+     SHEET 1 — FRONT — Order of Service
+     ═══════════════════════════════════════════════════════════ -->
+<div class="sheet">
+
+  <!-- Left copy -->
+  <div class="panel panel-left">
+    <img class="greenery greenery-top" src="greenery_top.png" alt="">
+    <div class="front-content">
+      <div class="title-baptism">BAPTISM</div>
+      <div class="title-of">of</div>
+      <!-- ✏️ CHILD'S NAME -->
+      <div class="title-name">{{CHILD_NAME}}</div>
+      <div class="date-row">
+        <span class="rule"></span>
+        <!-- ✏️ DATE -->
+        <span class="date-text">{{DATE}}</span>
+        <span class="rule"></span>
+      </div>
+
+      <!-- ✏️ ORDER ROWS — duplicate/remove rows as needed -->
+      <div class="order-list">
+        {{OPENING_ROWS}}
+      </div>
+
+      <div class="section-header"><span class="hr"></span>Ordinance of Baptism<span class="hr"></span></div>
+      <!-- ✏️ PERFORMER -->
+      <div class="performed-by">Performed by {{PERFORMED_BY}}</div>
+      <!-- ✏️ WITNESSES -->
+      <div class="witnesses">Witnesses: {{WITNESSES}}</div>
+
+      <!-- ✏️ TALK -->
+      <div class="talk-row">{{TALK_HOLY_GHOST_ROLE}} &nbsp;&middot;&nbsp; {{TALK_HOLY_GHOST_PERSON}}</div>
+
+      <!-- ✏️ CONFIRMATION HEADING (child's first name) -->
+      <div class="section-header"><span class="hr"></span>Confirmation of {{CHILD_FIRST_NAME}}<span class="hr"></span></div>
+      <!-- ✏️ CONFIRMED BY -->
+      <div class="byline">by {{CONFIRMATION_BY}}</div>
+
+      <!-- ✏️ CLOSING ROWS -->
+      <div class="order-list">
+        {{CLOSING_ROWS}}
+      </div>
+    </div>
+  </div>
+
+  <!-- Right copy (identical) -->
+  <div class="panel panel-right">
+    <img class="greenery greenery-top" src="greenery_top.png" alt="">
+    <div class="front-content">
+      <div class="title-baptism">BAPTISM</div>
+      <div class="title-of">of</div>
+      <div class="title-name">{{CHILD_NAME}}</div>
+      <div class="date-row">
+        <span class="rule"></span>
+        <span class="date-text">{{DATE}}</span>
+        <span class="rule"></span>
+      </div>
+      <div class="order-list">
+        {{OPENING_ROWS}}
+      </div>
+      <div class="section-header"><span class="hr"></span>Ordinance of Baptism<span class="hr"></span></div>
+      <div class="performed-by">Performed by {{PERFORMED_BY}}</div>
+      <div class="witnesses">Witnesses: {{WITNESSES}}</div>
+      <div class="talk-row">{{TALK_HOLY_GHOST_ROLE}} &nbsp;&middot;&nbsp; {{TALK_HOLY_GHOST_PERSON}}</div>
+      <div class="section-header"><span class="hr"></span>Confirmation of {{CHILD_FIRST_NAME}}<span class="hr"></span></div>
+      <div class="byline">by {{CONFIRMATION_BY}}</div>
+      <div class="order-list">
+        {{CLOSING_ROWS}}
+      </div>
+    </div>
+  </div>
+
+</div><!-- /sheet 1 -->
+
+
+<!-- ═══════════════════════════════════════════════════════════
+     SHEET 2 — BACK — Song Lyrics
+     ═══════════════════════════════════════════════════════════ -->
+<div class="sheet">
+
+  <!-- Left copy -->
+  <div class="panel panel-left">
+    <img class="greenery greenery-bottom" src="greenery_bottom.png" alt="">
+    <div class="back-content">
+      <div class="lyrics-title">Song Lyrics</div>
+
+      <!-- ✏️ SONG 1 -->
+      {{SONG_BLOCKS}}
+    </div>
+  </div>
+
+  <!-- Right copy (identical) -->
+  <div class="panel panel-right">
+    <img class="greenery greenery-bottom" src="greenery_bottom.png" alt="">
+    <div class="back-content">
+      <div class="lyrics-title">Song Lyrics</div>
+      {{SONG_BLOCKS}}
+    </div>
+  </div>
+
+</div><!-- /sheet 2 -->
+
+<!-- ── HOW TO USE ────────────────────────────────────────────
+  EDITING: Search for ✏️ comments above — those are the only
+  spots that change between baptisms.
+
+  GREENERY: The src="https://i.imgur.com/Q7XZQX9.png" is a
+  placeholder. Replace with the real greenery image path once
+  you host/save it locally alongside this file.
+
+  PRINTING TO PDF:
+  1. Open in Chrome
+  2. Ctrl/Cmd+P → Save as PDF
+  3. Paper: Letter, Landscape, Margins: None, Scale: 100%
+  4. Print both pages → you get the two-up, cut-down-the-middle layout
+──────────────────────────────────────────────────────────── -->
+
+</body>
+</html>
