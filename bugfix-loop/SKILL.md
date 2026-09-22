@@ -114,8 +114,9 @@ history must be rewritten, finish the loop first.
 Anything you explain only in a thread reply is invisible next round, so the same finding comes back
 and the loop never terminates. Every decision you want to stick must be in the **body**.
 
-A body edit alone does not retrigger the bot - only a push does. So the order below matters: update
-the body, *then* re-request.
+Neither a body edit nor a push retriggers the bot on its own — only re-requesting it as a reviewer
+does. So the order below matters: push, update the body, *then* re-request, so the round it reads is
+the current one.
 
 ## Loop guard
 
@@ -292,8 +293,10 @@ gh api -X POST repos/ORG/REPO/pulls/PR/requested_reviewers -f reviewers[]=BOT
 
 ### 9. Poll for the new verdict - and for the bot still being alive
 
-The bot re-runs on push, with a lag. Poll roughly every 45 seconds for a new review from `BOT` or new
-threads, comparing against this round's starting counts rather than absolute numbers.
+The bot does **not** re-run on push — the re-request in the previous step is what triggers it, and
+it then lands with a lag. Poll roughly every 45 seconds for a new review from `BOT` or new threads,
+comparing against this round's starting counts rather than absolute numbers. If nothing has arrived
+and no check run has started, suspect the re-request never registered rather than a slow bot.
 
 **Short-circuit instead of waiting on a review that will never arrive.** Each poll, check the bot's
 own check runs on the head commit:
