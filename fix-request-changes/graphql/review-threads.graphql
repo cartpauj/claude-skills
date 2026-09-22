@@ -1,0 +1,22 @@
+query($owner:String!, $repo:String!, $pr:Int!, $cursor:String) {
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $pr) {
+      body
+      headRefOid
+      reviewThreads(first: 100, after: $cursor) {
+        pageInfo { hasNextPage endCursor }
+        totalCount
+        nodes {
+          id
+          isResolved
+          isOutdated
+          path
+          line
+          comments(first: 20) {
+            nodes { databaseId author { login } body createdAt }
+          }
+        }
+      }
+    }
+  }
+}
