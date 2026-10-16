@@ -41,6 +41,11 @@ hanging, and what the author committed to doing. **An author's "fixed in abc123"
 evidence** — check the commit actually does it. A thread marked resolved with nothing changed is a
 finding. Unresolved threads on real problems belong in your verdict.
 
+**Read the reply tags too.** The bot (`cspf-services`) acts only on a tag at the start of a thread's
+newest reply: `[fixed <sha>]` = it checks that commit once and moves on; `[dismissed] <reason>` = it
+**never raises that finding again**. So a dismissal is the author's call that no bot will revisit —
+judge each one yourself. A weak reason on a real problem is a finding.
+
 **Find companion PRs before deciding.** Changes often ship as a set — core plus add-on, service plus
 client — and approving one half merges a contract that only works when the other lands.
 
@@ -71,6 +76,13 @@ Tell each one, explicitly:
 
 Require `file:line`, the failure scenario, and a fix on every finding — plus what it verified as
 correct.
+
+**Plus one bot-rehearsal slice** on caseproof repos: fetch the review bot's own instructions
+(`gh api repos/caseproof/caseproof-ai-plugins/contents/devkit/agents/code-reviewer.md -H "Accept: application/vnd.github.raw"`) and have one more
+subagent apply that checklist to the full diff, the linked issues, and the tagged threads. It shows
+what `cspf-services` will raise or already let through. Its findings get the same treatment as every
+other slice — verified in Step 3, scope-filtered in Step 5 — and its output file stays out of the
+repo.
 
 ## Step 3 — Verify everything yourself
 
@@ -132,6 +144,12 @@ the project's declared lint/test commands (`composer.json`, `package.json`, CI w
 inventing them. Conventions you can't query — "this branch takes release merges only" — get asked
 about.
 
+**Check the bot looked hard enough.** Its depth is set from the title's `type(scope):`, exact-match
+labels, size, and the repo's risky paths, when review is requested. A change that touches payments,
+auth, permissions or security but is titled `chore:`/`docs:` or has no matching scope or label got a
+lighter bot pass — weigh its approval accordingly, and say so in your notes (the fix is a better
+title or label plus a re-request; it doesn't block on its own).
+
 **Distrust stale approvals.** A bot usually approves an older commit; compare PR head against the
 review's `commit_id` and read anything pushed since yourself.
 
@@ -152,6 +170,9 @@ preference with no runtime effect. Note it, or just fix it.
 
 On a re-review, if every substantive finding is resolved, approve. Trivia doesn't earn another round
 trip — decide it yourself.
+
+The bot reads existing reviews and comments on its next round, so your body feeds it — keep
+secrets out, and state findings plainly enough to stand alone.
 
 Write the body to a file, then post:
 

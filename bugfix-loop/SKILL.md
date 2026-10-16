@@ -1,6 +1,6 @@
 ---
 name: bugfix-loop
-description: Iterate on your own bug-fix PR until an automated reviewer approves it. Self-reviews the diff before every push, runs narrow checks on changed code only, appends a per-round log to the PR description because the bot only reads that, replies to and resolves every thread, re-requests review, then polls the bot's own check runs and repeats — with a loop guard. Trigger when the user asks to work a PR through review, respond to review-bot findings, address review comments, or keep going until a PR is approved.
+description: Iterate on your own bug-fix PR until an automated reviewer approves it. Opens it with a risk-accurate title and labels, rehearses the bot's own review locally before every push, runs narrow checks on changed code only, replies to every thread with the [fixed]/[dismissed] tags the bot reads, appends a per-round log to the PR description, re-requests review, then polls the bot's own check runs and repeats — with a loop guard. Trigger when the user asks to work a PR through review, respond to review-bot findings, address review comments, or keep going until a PR is approved.
 ---
 
 # Bugfix Loop
@@ -14,13 +14,45 @@ mechanics on top.
 
 (For a human's Request Changes review, use `fix-request-changes`.)
 
-## The two facts that make this converge
+## The facts that make this converge
 
-1. **The bot reads only the PR description.** Not comment threads. Anything explained only in a
-   thread reply is invisible next round, so the same finding comes back forever. Every decision you
-   want to stick goes in the **body**.
+1. **The bot reads the diff, PR body, linked issues, and earlier threads** — but a thread only
+   counts through a **tag at the start of its newest reply** (below). An untagged reply, or a
+   resolve with no reply, gets the finding reviewed again from scratch. That's why findings recur.
 2. **Nothing retriggers the bot except re-requesting it as a reviewer.** Not a push, not a body
-   edit. Hence the order: push → update body → re-request.
+   edit. If it already approved, remove it and add it back. Hence the order: push → reply → body →
+   re-request.
+3. **Every round spends the team's monthly AI budget**, and bigger or more sensitive PRs cost more
+   (more models). Rehearse locally; request the bot only when you expect an approval.
+
+**Thread reply tags — the bot reads only these.** On a devkit-based bot (`cspf-services`), the
+next round reads each thread's **newest reply** and acts on a tag at its very start:
+
+| Newest reply starts with | Next round |
+|---|---|
+| `[fixed <sha>]` (4–40 hex, the fixing commit) | Checks that commit once; drops the finding if it holds and nothing changed since |
+| `[dismissed] <reason>` | Never raises it again; the reason is shown in its review |
+| Anything else — no tag, plain "Fixed", `[dismissed]` with no reason, resolved with no reply | **Reviews it again from scratch** |
+
+Resolving a thread does nothing for the bot. Only the tag counts, and only on the newest reply — a
+later untagged reply (yours or anyone's) cancels it. Tag first, then the human-readable why:
+`[fixed a1b2c3d] Escaped with esc_attr() at class-foo.php:42.`
+`[dismissed] Pre-existing; this PR doesn't touch that path. Tracked in #123.`
+
+## How deep the bot looks (caseproof `cspf-services`)
+
+A planner scores the PR 0–6 when review is requested; higher = more models (up to 4), more cost.
+
+- **Size:** 6+ files or 500+ changed lines adds points (lock files, `vendor/`, `dist/`, `*.min.js`
+  don't count). If ≥80% of lines sit in the top 3 files, size drops by one.
+- **Keywords** from the title's `type(scope):` (or a leading `[tag]`) and **exact** labels, on the PR
+  or linked issues. Up: auth, authentication, billing, cart, checkout, fees, migration, payment(s),
+  paypal, ppcp, permission, privacy, security, stripe. Down (size only): chore, ci, docs, test(s),
+  deps, dependencies.
+- **Risky paths** from `.github/ai-code-review.yml` on the base branch — none unless a repo sets them.
+- **Skipped:** drafts (not auto-requested), forks, the `no review` label (on the PR, not the issue).
+
+The plan job's log shows the `breakdown` and `reason` lines if you need to check.
 
 ## Rules
 
@@ -35,6 +67,30 @@ mechanics on top.
 5. **Don't run the full suite or a whole-repo lint** — CI does that. Only the files you touched and
    the tests covering them.
 6. **Never approve or merge on the user's behalf** unless they asked for that on this PR.
+
+## Opening the PR — the first review starts the moment it opens
+
+The bot is auto-requested on every non-draft PR, so the title and labels it plans from are the ones
+you open with. Get them right **in the `gh pr create` call**:
+
+- **Title** `type(scope): …` with the most sensitive scope that's true — `fix(security): …`,
+  `fix(stripe): …`. Never `chore`/`docs`/`test` on code that touches payments, auth or security.
+- **Labels** matching what it touches (`security`, `payment`, `stripe`, `auth`, `checkout`…).
+- **Pre-flight before `gh pr create`:** make sure every label, assignee and reviewer you're about to
+  use exists. A missing label fails the create — or, if you retry without it, opens the PR unlabeled
+  and the bot plans a lighter review that can't be undone. Create missing labels; never drop them.
+
+```
+# Labels: create any that are missing (gh pr/issue create fails on a missing one).
+for L in security payment; do
+  gh label list -R ORG/REPO --limit 500 --json name --jq '.[].name' | grep -qixF "$L" \
+    || gh label create "$L" -R ORG/REPO
+done
+# People: every assignee/reviewer must have access (204 = OK), or the create fails.
+gh api repos/ORG/REPO/collaborators/LOGIN --silent && echo ok
+```
+- **Not ready?** Open it as `--draft`; mark ready only after the local rehearsal (Step 3) is clean.
+- **Keep it small.** Small, concentrated PRs score lower, cost less, and converge faster.
 
 ## Loop guard
 
@@ -90,7 +146,15 @@ including **searching for the pattern** (if the defect exists at other call site
 and **checking downstream repos** if you touched a shared API, since neither your diff nor CI will
 show those.
 
-Then verify it twice, the way `review` does:
+Then verify it three ways:
+
+- **Rehearse the bot.** Fetch its own instructions —
+  `gh api repos/caseproof/caseproof-ai-plugins/contents/devkit/agents/code-reviewer.md -H "Accept: application/vnd.github.raw"` —
+  and have one subagent apply that checklist to `git diff origin/BASE...HEAD` plus the linked issue
+  and this round's tagged threads, returning findings and a verdict. Don't write its
+  `.caseproof-dev/` output into the repo. Its checklist reports everything, so put each finding through
+  the `review` scope filter: fix only what holds up **and** this PR caused or left half-done; anything
+  else (pre-existing, nearby, style) gets declined in the body up front — never fixed here. This is the cheap round — the bot is the expensive one.
 
 - **Fan out to subagents** over the changed code — one on whether the fixes hold, one on what they
   might have broken, one on tests, one on comments. Tell each: report only what the code proves,
@@ -134,7 +198,8 @@ Take the body from step 1, append, write the whole thing back:
 - Downstream: <repos checked, result>
 ```
 
-The **declined** entries are what stop findings recurring — this is the bot's only input.
+The thread tags are what stop findings recurring; the body log is the backstop — it covers
+findings raised only in a review body (no thread to tag) and gives humans the history.
 
 One allowance: if a sentence in the original summary is now factually untrue, correct that sentence.
 Don't restructure around it.
@@ -146,23 +211,28 @@ gh api -X PATCH repos/ORG/REPO/pulls/PR -F body=@newbody.md
 Use this rather than `gh pr edit --body-file`, which fails on some orgs with a projects-classic
 deprecation error.
 
-### 7. Reply to and resolve every thread
+### 7. Reply to and resolve every thread — with tags
 
-Reply by REST using the first comment's `databaseId` from step 1; resolve by GraphQL using the
-thread's node `id`. Resolving has no REST equivalent.
+Every reply starts with `[fixed <sha>]` or `[dismissed] <reason>` (see the table above); the
+`<sha>` is the pushed commit that fixes it. Reply by REST using the first comment's `databaseId`
+from step 1; resolve by GraphQL using the thread's node `id`. Resolving has no REST equivalent.
 
 ```
 gh api -X POST repos/ORG/REPO/pulls/PR/comments/COMMENT_DATABASE_ID/replies -F body=@reply.md
 gh api graphql -F threadId=THREAD_ID -F query=@graphql/resolve-thread.graphql
 ```
 
-Declined threads get resolved too, with the reason.
+Declined threads get resolved too, with the reason. Before re-requesting, re-read each thread's
+newest reply: if anyone replied after you, your tag no longer counts — reply again with it.
 
 ### 8. Re-request review
 
 ```
 gh api -X POST repos/ORG/REPO/pulls/PR/requested_reviewers -f reviewers[]=BOT
 ```
+
+If the bot has already approved, a plain re-request may not start a run: remove it first
+(same path, `-X DELETE`), then add it back.
 
 ### 9. Poll — and watch for a bot that will never answer
 

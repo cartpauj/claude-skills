@@ -22,7 +22,7 @@ else's PR, use `review`.)
 4. **Never open an issue you haven't verified in the code.** No speculative tickets.
 5. **Never force-push.** It detaches existing review comments. Add commits.
 6. **Resolve every thread** — accepted, declined, or already-fixed — each with a reply saying what
-   you did and why.
+   you did and why, **starting with a `[fixed <sha>]` or `[dismissed] <reason>` tag** (Step 7).
 7. **Comments in code only where the intent isn't obvious.** Never narrate what the line does.
 
 ## Step 1 — Ground yourself
@@ -91,7 +91,15 @@ never raise a finding from a comment or a commit message, zero findings is a goo
 **Pass two — re-verify yourself.** Open the code and confirm each finding independently. Subagents
 are confidently wrong often enough to matter; anything you can't reproduce by reading gets dropped.
 
-**Fix everything that survives pass two before you commit.** Then re-read the whole diff
+**Pass three — rehearse the bot** (caseproof repos, when `cspf-services` will be re-requested). Fetch
+its own instructions (`gh api repos/caseproof/caseproof-ai-plugins/contents/devkit/agents/code-reviewer.md -H "Accept: application/vnd.github.raw"`)
+and have one subagent apply that checklist to `git diff origin/BASE...HEAD`, the linked issue, and
+the threads as your tagged replies will leave them. Its checklist reports everything, so hold each
+finding to Rule 3: fix only what holds up **and** is in this PR's scope; plan a `[dismissed]` reason
+for the rest. A practice-run finding is not a reviewer's request — it never widens the PR. Don't write its `.caseproof-dev/` output into the repo. A local rehearsal is free;
+a bot round spends the team's budget.
+
+**Fix everything that survives before you commit.** Then re-read the whole diff
 (`git diff origin/BASE...HEAD`) as one change, not as a list of patches.
 
 ## Step 6 — Commit and push
@@ -114,6 +122,17 @@ Each reply says **what action was taken and why**, with links — the commit SHA
 issue opened for it, a related PR, or the `file:line` proving it needed no change. A resolved thread
 with no explanation reads as ignored.
 
+**Start every reply with a tag** — the review bot (`cspf-services`) reads only this, from each
+thread's newest reply, on its next round:
+
+- `[fixed <sha>]` — fixed in that pushed commit. The bot checks it once and moves on.
+- `[dismissed] <reason>` — declined, out of scope, or already handled. The bot never raises it again.
+- No tag, plain "Fixed", `[dismissed]` with no reason, or resolved without a reply → the bot reviews
+  it again from scratch.
+
+Use them on human threads too; they read fine and keep the record uniform. If anyone replies after
+you, your tag stops counting — reply again with it before re-requesting.
+
 ## Step 8 — Issues for verified unrelated findings
 
 Only for things you confirmed in the code and deliberately left out of scope.
@@ -127,6 +146,21 @@ gh issue list -R ORG/REPO --search "KEYWORD" --state all --limit 20
 If one exists, link it in the thread reply instead of opening another. Otherwise open one with the
 `file:line`, what actually goes wrong, and how to reproduce — then link it back into the thread that
 raised it.
+
+Before `gh issue create --label …`, create any label that doesn't exist yet (`gh issue create` fails on
+a missing one), and check the assignee has access:
+
+```
+# Labels: create any that are missing (gh pr/issue create fails on a missing one).
+for L in security payment; do
+  gh label list -R ORG/REPO --limit 500 --json name --jq '.[].name' | grep -qixF "$L" \
+    || gh label create "$L" -R ORG/REPO
+done
+# People: every assignee/reviewer must have access (204 = OK), or the create fails.
+gh api repos/ORG/REPO/collaborators/LOGIN --silent && echo ok
+```
+
+The same pre-flight applies to any labels you add to the PR in Step 9.
 
 ## Step 9 — Summarize and hand back
 
@@ -146,6 +180,10 @@ generally does not re-run on push, so an un-triggered one leaves the PR stalled 
 ```
 gh pr edit PR -R ORG/REPO --add-reviewer LOGIN
 ```
+
+The bot doesn't re-run on push, and a re-request may not start a new run once it has approved —
+remove it (`gh pr edit PR -R ORG/REPO --remove-reviewer cspf-services`) and add it back. Each bot
+round spends the team's AI budget, so re-request it only when you expect an approval.
 
 If a reviewer won't re-add (GitHub refuses a re-request in some states), say so in the summary
 comment and `@`-mention them there instead of leaving it silent.
