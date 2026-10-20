@@ -239,6 +239,13 @@ If the bot has already approved, a plain re-request may not start a run: remove 
 the branch ruleset keeps the team pinned on the PR, so there's no new request and no run (tested on
 pretty-link, 2026-10-20). A team request only starts a planner run that skips anyway.
 
+**Expect this to change.** Today a PR shows two reviewers: the **AI Reviewers** team (the ruleset
+requests it, and it stays listed) and **`cspf-services`** (the team hands the request to its one member,
+and that's the request that starts the review). Thomas plans to make the team request itself start the
+review and stop handing it to `cspf-services`. When that lands you may see only the team, and requesting
+`cspf-services` directly may stop starting a run. If a re-request produces no run, check
+org-admin#910 and `docs/ai-code-review.md` for the current route and try the team instead.
+
 ### 9. Poll — and watch for a bot that will never answer
 
 The re-request in step 8 is what triggers the run; it lands with a lag. Poll about every 45 seconds

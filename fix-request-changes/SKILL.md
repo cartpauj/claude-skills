@@ -183,7 +183,14 @@ gh pr edit PR -R ORG/REPO --add-reviewer LOGIN
 
 The bot doesn't re-run on push. On Caseproof, re-request `cspf-services` itself (not the `ai-reviewers`
 team — the ruleset keeps the team pinned, so re-requesting it does nothing). If it already approved,
-remove it first (`gh pr edit PR -R ORG/REPO --remove-reviewer cspf-services`) and add it back. Each bot
+remove it first (`gh pr edit PR -R ORG/REPO --remove-reviewer cspf-services`) and add it back.
+
+**Expect this to change.** Today a PR shows two reviewers: the **AI Reviewers** team (the ruleset
+requests it, and it stays listed) and **`cspf-services`** (the team hands the request to its one member,
+and that's the request that starts the review). Thomas plans to make the team request itself start the
+review and stop handing it to `cspf-services`. When that lands you may see only the team, and requesting
+`cspf-services` directly may stop starting a run. If a re-request produces no run, check
+org-admin#910 and `docs/ai-code-review.md` for the current route and try the team instead. Each bot
 round spends the team's AI budget, so re-request it only when you expect an approval.
 
 If a reviewer won't re-add (GitHub refuses a re-request in some states), say so in the summary
