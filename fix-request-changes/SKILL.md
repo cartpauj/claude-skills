@@ -181,8 +181,9 @@ generally does not re-run on push, so an un-triggered one leaves the PR stalled 
 gh pr edit PR -R ORG/REPO --add-reviewer LOGIN
 ```
 
-The bot doesn't re-run on push, and a re-request may not start a new run once it has approved —
-remove it (`gh pr edit PR -R ORG/REPO --remove-reviewer cspf-services`) and add it back. Each bot
+The bot doesn't re-run on push. On Caseproof, re-request `cspf-services` itself (not the `ai-reviewers`
+team — the ruleset keeps the team pinned, so re-requesting it does nothing). If it already approved,
+remove it first (`gh pr edit PR -R ORG/REPO --remove-reviewer cspf-services`) and add it back. Each bot
 round spends the team's AI budget, so re-request it only when you expect an approval.
 
 If a reviewer won't re-add (GitHub refuses a re-request in some states), say so in the summary

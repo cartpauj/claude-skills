@@ -20,7 +20,7 @@ mechanics on top.
    counts through a **tag at the start of its newest reply** (below). An untagged reply, or a
    resolve with no reply, gets the finding reviewed again from scratch. That's why findings recur.
 2. **Nothing retriggers the bot except re-requesting it as a reviewer.** Not a push, not a body
-   edit. If it already approved, remove it and add it back. Hence the order: push → reply → body →
+   edit. On Caseproof that means re-requesting `cspf-services` itself (Step 8), not the team. Hence the order: push → reply → body →
    re-request.
 3. **Every round spends the team's monthly AI budget**, and bigger or more sensitive PRs cost more
    (more models). Rehearse locally; request the bot only when you expect an approval.
@@ -50,7 +50,7 @@ A planner scores the PR 0–6 when review is requested; higher = more models (up
   paypal, ppcp, permission, privacy, security, stripe. Down (size only): chore, ci, docs, test(s),
   deps, dependencies.
 - **Risky paths** from `.github/ai-code-review.yml` on the base branch — none unless a repo sets them.
-- **Skipped:** drafts (not auto-requested), forks, the `no review` label (on the PR, not the issue).
+- **Skipped:** drafts (the ruleset doesn't request until it's ready), forks, the `no review` label (on the PR, not the issue).
 
 The plan job's log shows the `breakdown` and `reason` lines if you need to check.
 
@@ -70,7 +70,8 @@ The plan job's log shows the `breakdown` and `reason` lines if you need to check
 
 ## Opening the PR — the first review starts the moment it opens
 
-The bot is auto-requested on every non-draft PR, so the title and labels it plans from are the ones
+An org branch ruleset requests the `ai-reviewers` team on every non-draft PR (or when a draft is
+marked ready), and the team hands it to `cspf-services` — so the title and labels it plans from are the ones
 you open with. Get them right **in the `gh pr create` call**:
 
 - **Title** `type(scope): …` with the most sensitive scope that's true — `fix(security): …`,
@@ -228,11 +229,15 @@ newest reply: if anyone replied after you, your tag no longer counts — reply a
 ### 8. Re-request review
 
 ```
-gh api -X POST repos/ORG/REPO/pulls/PR/requested_reviewers -f reviewers[]=BOT
+gh api -X POST repos/ORG/REPO/pulls/PR/requested_reviewers -f 'reviewers[]=BOT'
 ```
 
 If the bot has already approved, a plain re-request may not start a run: remove it first
 (same path, `-X DELETE`), then add it back.
+
+**Caseproof:** request `cspf-services` directly. Re-requesting the `ai-reviewers` team does nothing —
+the branch ruleset keeps the team pinned on the PR, so there's no new request and no run (tested on
+pretty-link, 2026-10-20). A team request only starts a planner run that skips anyway.
 
 ### 9. Poll — and watch for a bot that will never answer
 
