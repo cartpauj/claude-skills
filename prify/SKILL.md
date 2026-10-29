@@ -15,9 +15,8 @@ behaves (scoring, tags, re-requests). Read both, and don't repeat their rules he
 
 Your first action is one `AskUserQuestion` call with two questions. Don't read the issue first.
 
-1. **"Who should review this PR (human)?"** with the options *Nobody*, *Ally Roger* (`allycspf`),
-   *Jarek* (`ThemeGravity`), *Muneeb* (`m4munib`). They can type any other login under Other.
-   Logins are in `~/.claude/caseproof-team.md`.
+1. **"Who should review this PR (human)?"** with the options *Nobody* or *Someone (type their GitHub
+   login under Other)*. If they give a name rather than a login, look the login up before using it.
 2. **"Should cspf-services review it?"** with the options *Yes* or *No (adds the `no review` label)*.
 
 If no issue link was passed, ask for one in the same call.
